@@ -207,6 +207,27 @@ Vagrant.configure('2') do |config|
                         end
                     end
                 end
+
+                ##
+                # lxc
+                ##
+                if provider['type'] == 'lxc'
+                    config.vm.provider provider['type'] do |lxc|
+                        # Custom
+                        if provider['options']
+                            provider['options'].each { |key, value|
+                              eval("lxc.customize '#{key}', '#{value}'")
+                            }
+                        end
+
+                        # Raw Configuration
+                        if provider['raw_config_args']
+                            provider['raw_config_args'].each { |raw_config_arg|
+                                eval("lxc.#{raw_config_arg}")
+                            }
+                        end
+                    end
+                end
             end
         }
     end
@@ -219,6 +240,21 @@ Vagrant.configure('2') do |config|
             config.vm.define instance['vm_name'] do |c|
                 if driver_config['current_provider'] != 'libvirt'
                     c.vm.hostname = instance['vm_name']
+                end
+
+                if driver_config['current_provider'] == 'lxc'
+                  c.vm.provider :lxc do |lxc|
+                    lxc.container_name = instance['vm_name']
+
+                    if instance['networks']
+                      instance['networks'].each { |network|
+                        lxc.customize 'network.name', "#{network['name']}"
+                        lxc.customize 'network.type', "#{network['type']}"
+                        lxc.customize 'network.flags', 'up'
+                        lxc.customize 'network.link', "#{network['link']}"
+                      }
+                    end
+                  end
                 end
 
                 if instance['platform']
