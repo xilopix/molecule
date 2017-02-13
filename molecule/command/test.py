@@ -35,12 +35,21 @@ class Test(base.Base):
         :return: Return a tuple of (`exit status`, `command output`), otherwise
          sys.exit on command failure.
         """
-        ts = self.molecule.config.config['molecule']['test']['sequence']
+        if self.command_args.get('all') == True:
+            ts = self.molecule.config.config['molecule']['test']['sequence']
+        else:
+            ts = ['destroy', 'create', 'converge']
+
         for task in ts:
             command_module = getattr(molecule.command, task)
             command = getattr(command_module, task.capitalize())
-            c = command(self.args, self.command_args, self.molecule)
 
+            # in case we want to re-work on an already existing vm
+            if task == 'destroy' and self.command_args.get('from_scratch') == False:
+                util.print_info('Keep instance up...')
+                continue
+
+            c = command(self.args, self.command_args, self.molecule)
             status, output = c.execute(exit=False)
 
             # Fail fast
@@ -49,18 +58,13 @@ class Test(base.Base):
                     util.print_error(output)
                 util.sysexit(status)
 
-        if self.command_args.get('destroy') == 'always':
+        if self.command_args.get('clean') == True:
             c = molecule.command.destroy.Destroy(self.args, self.command_args)
             c.execute()
-            return None, None
-
-        if self.command_args.get('destroy') == 'never':
             return None, None
 
         # passing (default)
         if status is None:
-            c = molecule.command.destroy.Destroy(self.args, self.command_args)
-            c.execute()
             return None, None
 
 
@@ -69,16 +73,23 @@ class Test(base.Base):
 @click.option('--platform', default=None, help='Specify a platform.')
 @click.option('--provider', default=None, help='Specify a provider.')
 @click.option(
-    '--destroy',
-    type=click.Choice(['passing', 'always', 'never']),
-    default=None,
-    help='Destroy behavior.')
-@click.option(
     '--sudo/--no-sudo',
     default=False,
     help='Enable or disable running tests with sudo. Default is disabled.')
+@click.option(
+    '--from-scratch/--not-from-scratch',
+    default=False,
+    help='Run from scratch.')
+@click.option(
+    '--clean/--no-clean',
+    default=False,
+    help='Destroy vm after execution.')
+@click.option(
+    '--all/--no-all',
+    default=False,
+    help='Execute all test sequence')
 @click.pass_context
-def test(ctx, driver, platform, provider, destroy, sudo):  # pragma: no cover
+def test(ctx, driver, platform, provider, sudo, from_scratch, clean, all):  # pragma: no cover
     """
     Runs a series of commands (defined in config) against instances for a full
     test/verify run.
@@ -87,8 +98,10 @@ def test(ctx, driver, platform, provider, destroy, sudo):  # pragma: no cover
         'driver': driver,
         'platform': platform,
         'provider': provider,
-        'destroy': destroy,
-        'sudo': sudo
+        'sudo': sudo,
+        'from_scratch': from_scratch,
+        'clean': clean,
+        'all': all
     }
 
     t = Test(ctx.obj.get('args'), command_args)
